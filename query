@@ -1,0 +1,226 @@
+Case 1 : Sipariş Analizi
+Question 1 : 
+-Aylık olarak order dağılımını inceleyiniz. Tarih verisi için order_approved_at kullanılmalıdır.
+Answer 1:
+Sorgu:
+select to_char(order_approved_at,'YYYY-MM') as order_month,
+count (order_id) as order_count
+from orders
+group by order_month; 
+
+Question 2 : 
+-Aylık olarak order status kırılımında order sayılarını inceleyiniz. Sorgu sonucunda çıkan outputu excel ile görselleştiriniz. Dramatik bir düşüşün ya da yükselişin olduğu aylar var mı? Veriyi inceleyerek yorumlayınız.
+Answer 2:
+Sorgu:
+select to_char(order_approved_at,'YYYY-MM') as order_month,
+order_status,
+count(order_id) as order_count
+from orders
+group by order_month,
+orders_status;
+
+Question 3 : 
+-Ürün kategorisi kırılımında sipariş sayılarını inceleyiniz. Özel günlerde öne çıkan kategoriler nelerdir? Örneğin yılbaşı, sevgililer günü…
+
+Answer 3:
+Sorgu:
+select to_char(o.order_approved_at,'YYYY-MM') as order_month,
+       p.product_category_name,
+       count(distinct o.order_id) as order_count
+from orders as o
+left join order_items as ori on o.order_id = ori.order_id
+left join products as p on ori.product_id = p.product_id
+group by order_month, product_category_name
+order by 3 desc;
+
+Question 4 : 
+-Haftanın günleri(pazartesi, perşembe, ….) ve ay günleri (ayın 1’i,2’si gibi) bazında order sayılarını inceleyiniz. Yazdığınız sorgunun outputu ile excel’de bir görsel oluşturup yorumlayınız.
+Answer 4:
+Sorgu1:
+select  to_char(order_approved_at,'day') as days,
+count(order_id) as total
+from orders
+group by days;
+Sorgu2:
+select extract(day from order_approved_at ) as days,
+count (order_id) as total
+from orders
+group by days
+order by total;
+
+Case 2 : Müşteri Analizi 
+Question 1 : 
+-Hangi şehirlerdeki müşteriler daha çok alışveriş yapıyor? Müşterinin şehrini en çok sipariş verdiği şehir olarak belirleyip analizi ona göre yapınız. 
+Answer 1:
+Sorgu:
+with siparis_sayisi as ( 
+	select o.customer_id,
+	customer_city,
+	count(order_id) as order_count 
+	from orders as o
+	left join customers as c on 
+	c.customer_id = o.customer_id 
+	group by 1, 2 ),
+	customer_city_rn as ( 
+	select row_number() over (partition by customer_id order by order_count desc) as rn, 
+		customer_id, 
+		customer_city 
+		from siparis_sayisi),
+		customer_city as(
+	select customer_id, customer_city 
+	from customer_city_rn
+	where rn = 1 )
+             select cc.customer_city, 
+             count(o.order_id) 
+             from orders as o 
+             left join customer_city as cc 
+             on o.customer_id = cc.customer_id 
+             group by 1
+             order by 2 desc; 
+
+Case 3: Satıcı Analizi
+Question 1 : 
+-Siparişleri en hızlı şekilde müşterilere ulaştıran satıcılar kimlerdir? Top 5 getiriniz. Bu satıcıların order sayıları ile ürünlerindeki yorumlar ve puanlamaları inceleyiniz ve yorumlayınız. 
+Answer 1 :
+Sorgu:
+with teslim_tarihi as (
+select ori.seller_id,
+extract(day from order_delivered_customer_date - order_purchase_timestamp) as or_del_time
+from orders as o
+left join order_items as ori
+on o.order_id = ori.order_id
+)
+select seller_id,
+avg(or_del_time) as del_time
+from teslim_tarihi
+group by 1
+order by 2
+limit 5
+Siparişleri en hızlı şekilde müşterilere ulaştıran satıcılar:
+order no	seller_id
+1	751e274377499a8503fd6243ad9c56f6
+2	96f7c797de9ca20efbe14545bed63eec
+3	2c00c85d30361cd2ced2969cffbbffa3
+4	5e063e85d44b0f5c3e6ec3131103a57e
+5	f3511c85f59f8dec53d140501ee8e7a8
+
+
+Question 2 : 
+-Hangi satıcılar daha fazla kategoriye ait ürün satışı yapmaktadır? 
+ Fazla kategoriye sahip satıcıların order sayıları da fazla mı? 
+Answer 2:
+Sorgu:
+select ori.seller_id,
+count (distinct p.product_category_name) as kategori_toplm, 
+count (distinct ori.order_id) as siparis_toplm
+from order_items as ori
+left join products as p 
+on ori.product_id = p.product_id
+group by 1
+order by 2 desc
+limit 5 
+En fazla kategoride ürün satışı yapan satıcılar:
+order no	seller_id	kategori_toplm	siparis_toplm
+1	b2ba3715d723d245138f291a6fe42594	27	337
+2	4e922959ae960d389249c378d1c939f5	23	420
+3	955fee9216a65b617aa5c0531780ce60	23	1287
+4	1da3aeb70d7989d1e6d9b0e887f97c23	21	265
+5	f8db351d8c4c4c22c6835c19a46f01b0	19	667
+
+Çıktılar incelendiğinde fazla kategori ve ürün sayıları arasında bir bağlantı bulunamamıştır.
+Case 4 : Payment Analizi
+Question 1 : 
+-Ödeme yaparken taksit sayısı fazla olan kullanıcılar en çok hangi bölgede yaşamaktadır? Bu çıktıyı yorumlayınız.
+Answer 1:
+
+
+Sorgu:
+select payment_installments,
+c.customer_city,
+count (distinct o.customer_id) as musteri_sayisi
+from payments as p
+left join orders as o
+on p.order_id = o.order_id
+left join customers as c 
+on c.customer_id = o.customer_id
+group by 1,
+                 2
+order by 1 desc,
+	     3 desc;
+En fazla taksit sayısı ile alışveriş yapılan ilk 10 şehir:
+sıra no	taksit sayısı	şehir	müşteri sayısı
+1	24	porto alegre	1
+2	24	vargem grande paulista	1
+3	24	campina grande	1
+4	24	bage	1
+5	24	vilhena	1
+6	24	brasilia	1
+7	24	jaguariuna	1
+8	24	dores de campos	1
+9	24	assai	1
+10	24	iguatu	1 
+
+Taksit sayısı ne kadar fazla ise yaşam standartları da o oranda düşüktür şeklinde yorumlayabiliriz. Yüksek taksitle alışveriş yapılan bölgelere avantajlı teklifler sunulabilir örneğin her alışverişte puan kazanma fırsatı ve küçük numune hediyelerle teşvik yapılabilir.
+Question 2 : 
+-Ödeme tipine göre başarılı order sayısı ve toplam başarılı ödeme tutarını hesaplayınız. En çok kullanılan ödeme tipinden en az olana göre sıralayınız.
+Answer 2:
+Sorgu:
+select payment_type,
+sum(case when o.order_status not in ('canceled', 'unavailable') then p.payment_value en d) as basarili_odeme, 
+count (distinct o.order_id) as siparis_sayisi
+from payments as p
+left join orders as o
+on p.order_id = o.order_id
+group by 1;
+ödeme türü	basarili ödeme	sipariş sayisi
+boleto	2844306.40	19784
+credit_card	12447417.87	76505
+debit_card	215129.02	1528
+not_defined	0.00	3
+voucher	375539.32	3866
+
+Question 3 : 
+-Tek çekimde ve taksitle ödenen siparişlerin kategori bazlı analizini yapınız. En çok hangi kategorilerde taksitle ödeme kullanılmaktadır?
+Answer 3:
+Sorgu:
+Tek çekimde ödenenler için:
+select payment_installments,
+product_category_name,
+count (distinct o.order_id) as order_count
+from orders as o
+left join payments as p
+on p.order_id = o.order_id
+left join order_items as ori
+on ori.order_id = o.order_id
+left join products as pro on pro.product_id=ori.product_id
+where payment_installments=1
+group by 1,2
+order by order_count desc, payment_installments desc;
+
+Taksitle ödenenler için:
+select payment_installments,
+product_category_name,
+count (distinct o.order_id) as order_count
+from orders as o
+left join payments as p
+on p.order_id = o.order_id
+left join order_items as ori
+on ori.order_id = o.order_id
+left join products as pro on pro.product_id=ori.product_id
+where payment_installments>1
+group by 1,2
+order by order_count desc, payment_installments desc;
+Aşağıdaki çıktımızda en fazla taksit sayısı kullanılan kategorileri görebiliriz.
+taksit sayısı	            kategori	sipariş sayısı
+24	telefonia	3
+24	informatica_acessorios	3
+24	beleza_saude	2
+24	automotivo	2
+24	cool_stuff	2
+24	relogios_presentes	2
+24	casa_conforto	1
+24	eletrodomesticos	1
+24	moveis_sala	1
+24	ferramentas_jardim	1
+24	esporte_lazer	1
+
